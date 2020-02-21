@@ -1,3 +1,13 @@
+# *Warning!* This is a patched version of the original package. Use at own *risk!!*
+
+This package differs from the original in the following ways...
+1. This will avoid compiling any functions that are not marked with the node runtime.
+1. Package now copies over a `python_code` directory to the updated staging area. This ensures that any functions in that directory will
+be packaged correctly during the serverless package artifact step.
+
+This package is for a very specific use case. If it does not serve your purpose please use the [original](https://github.com/prisma-labs/serverless-plugin-typescript)
+
+
 # serverless-plugin-typescript
 [![serverless](http://public.serverless.com/badges/v3.svg)](http://www.serverless.com) [![npm version](https://badge.fury.io/js/serverless-plugin-typescript.svg)](https://badge.fury.io/js/serverless-plugin-typescript) [![Build Status](https://travis-ci.org/prisma/serverless-plugin-typescript.svg?branch=master)](https://travis-ci.org/prisma/serverless-plugin-typescript)
 

@@ -12,13 +12,17 @@ export function makeDefaultTypescriptConfig() {
     target: ts.ScriptTarget.ES5,
     moduleResolution: ts.ModuleResolutionKind.NodeJs,
     lib: ['lib.es2015.d.ts'],
-    rootDir: './',
+    rootDir: './'
   }
 
   return defaultTypescriptConfig
 }
 
-export function extractFileNames(cwd: string, provider: string, functions?: { [key: string]: Serverless.Function }): string[] {
+export function extractFileNames(
+  cwd: string,
+  provider: string,
+  functions?: { [key: string]: Serverless.Function }
+): string[] {
   // The Google provider will use the entrypoint not from the definition of the
   // handler function, but instead from the package.json:main field, or via a
   // index.js file. This check reads the current package.json in the same way
@@ -28,13 +32,16 @@ export function extractFileNames(cwd: string, provider: string, functions?: { [k
   if (provider === 'google') {
     const packageFilePath = path.join(cwd, 'package.json')
     if (fs.existsSync(packageFilePath)) {
-
       // Load in the package.json file.
-      const packageFile = JSON.parse(fs.readFileSync(packageFilePath).toString())
+      const packageFile = JSON.parse(
+        fs.readFileSync(packageFilePath).toString()
+      )
 
       // Either grab the package.json:main field, or use the index.ts file.
       // (This will be transpiled to index.js).
-      const main = packageFile.main ? packageFile.main.replace(/\.js$/, '.ts') : 'index.ts'
+      const main = packageFile.main
+        ? packageFile.main.replace(/\.js$/, '.ts')
+        : 'index.ts'
 
       // Check that the file indeed exists.
       if (!fs.existsSync(path.join(cwd, main))) {
@@ -66,25 +73,39 @@ export function extractFileNames(cwd: string, provider: string, functions?: { [k
 
       // Can't find the files. Watch will have an exception anyway. So throw one with error.
       console.log(`Cannot locate handler - ${fileName} not found`)
-      throw new Error('Typescript compilation failed. Please ensure handlers exists with ext .ts or .js')
+      throw new Error(
+        'Typescript compilation failed. Please ensure handlers exists with ext .ts or .js'
+      )
     })
 }
 
-export async function run(fileNames: string[], options: ts.CompilerOptions): Promise<string[]> {
+export async function run(
+  fileNames: string[],
+  options: ts.CompilerOptions
+): Promise<string[]> {
   options.listEmittedFiles = true
   const program = ts.createProgram(fileNames, options)
 
   const emitResult = program.emit()
 
-  const allDiagnostics = ts.getPreEmitDiagnostics(program).concat(emitResult.diagnostics)
+  const allDiagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .concat(emitResult.diagnostics)
 
   allDiagnostics.forEach(diagnostic => {
     if (!diagnostic.file) {
       console.log(diagnostic)
     }
-    const {line, character} = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
-    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
-    console.log(`${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`)
+    const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
+      diagnostic.start
+    )
+    const message = ts.flattenDiagnosticMessageText(
+      diagnostic.messageText,
+      '\n'
+    )
+    console.log(
+      `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`
+    )
   })
 
   if (emitResult.emitSkipped) {
@@ -102,7 +123,8 @@ export function getSourceFiles(
   options: ts.CompilerOptions
 ): string[] {
   const program = ts.createProgram(rootFileNames, options)
-  const programmFiles = program.getSourceFiles()
+  const programmFiles = program
+    .getSourceFiles()
     .map(file => file.fileName)
     .filter(file => {
       return file.split(path.sep).indexOf('node_modules') < 0
@@ -117,14 +139,17 @@ export function getTypescriptConfig(
   const configFilePath = path.join(cwd, 'tsconfig.json')
 
   if (fs.existsSync(configFilePath)) {
-
     const configFileText = fs.readFileSync(configFilePath).toString()
     const result = ts.parseConfigFileTextToJson(configFilePath, configFileText)
     if (result.error) {
       throw new Error(JSON.stringify(result.error))
     }
 
-    const configParseResult = ts.parseJsonConfigFileContent(result.config, ts.sys, path.dirname(configFilePath))
+    const configParseResult = ts.parseJsonConfigFileContent(
+      result.config,
+      ts.sys,
+      path.dirname(configFilePath)
+    )
     if (configParseResult.errors.length > 0) {
       throw new Error(JSON.stringify(configParseResult.errors))
     }
@@ -134,7 +159,11 @@ export function getTypescriptConfig(
     }
 
     // disallow overrriding rootDir
-    if (configParseResult.options.rootDir && path.resolve(configParseResult.options.rootDir) !== path.resolve(cwd) && logger) {
+    if (
+      configParseResult.options.rootDir &&
+      path.resolve(configParseResult.options.rootDir) !== path.resolve(cwd) &&
+      logger
+    ) {
       logger.log('Warning: "rootDir" from local tsconfig.json is overriden')
     }
     configParseResult.options.rootDir = cwd

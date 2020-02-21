@@ -1,7 +1,7 @@
 import * as path from 'path'
 import * as fs from 'fs-extra'
 import * as _ from 'lodash'
-import * as globby from 'globby'
+import globby from 'globby'
 
 import * as typescript from './typescript'
 import { watchFiles } from './watchFiles'
@@ -9,7 +9,7 @@ import { watchFiles } from './watchFiles'
 const SERVERLESS_FOLDER = '.serverless'
 const BUILD_FOLDER = '.build'
 
-export class TypeScriptPlugin {
+class TypeScriptPlugin {
   private originalServicePath: string
   private isWatching: boolean
 
@@ -45,6 +45,9 @@ export class TypeScriptPlugin {
         await this.copyDependencies(true)
       },
       'after:package:createDeploymentArtifacts': async () => {
+        this.serverless.cli.log(
+          'typescript after:package:createDeploymentArtifacts'
+        )
         await this.cleanup()
       },
       'before:deploy:function:packageFunction': async () => {
@@ -61,7 +64,9 @@ export class TypeScriptPlugin {
         await this.copyDependencies()
         if (this.isWatching) {
           emitedFiles.forEach(filename => {
-            const module = require.resolve(path.resolve(this.originalServicePath, filename))
+            const module = require.resolve(
+              path.resolve(this.originalServicePath, filename)
+            )
             delete require.cache[module]
           })
         }
@@ -79,13 +84,20 @@ export class TypeScriptPlugin {
     const { options } = this
     const { service } = this.serverless
 
-    if (options.function) {
-      return {
-        [options.function]: service.functions[this.options.function]
-      }
-    }
+    const allFunctions = options.function
+      ? {
+          [options.function]: service.functions[this.options.function]
+        }
+      : service.functions
 
-    return service.functions
+    // Ensure we only handle runtimes that support Typescript
+    return _.pickBy(allFunctions, ({ runtime }) => {
+      const resolvedRuntime = runtime || service.provider.runtime
+      // If runtime is not specified on the function or provider, default to previous behaviour
+      return resolvedRuntime === undefined
+        ? true
+        : resolvedRuntime.match(/^node/)
+    })
   }
 
   get rootFileNames() {
@@ -102,11 +114,14 @@ export class TypeScriptPlugin {
       const fn = this.functions[fnName]
       fn.package = fn.package || {
         exclude: [],
-        include: [],
+        include: []
       }
 
       // Add plugin to excluded packages or an empty array if exclude is undefined
-      fn.package.exclude = _.uniq([...fn.package.exclude || [], 'node_modules/serverless-plugin-typescript'])
+      fn.package.exclude = _.uniq([
+        ...(fn.package.exclude || []),
+        'node_modules/serverless-plugin-typescript'
+      ])
     }
   }
 
@@ -131,18 +146,24 @@ export class TypeScriptPlugin {
     this.serverless.cli.log(`Watching typescript files...`)
 
     this.isWatching = true
-    watchFiles(this.rootFileNames, this.originalServicePath, this.compileTs.bind(this))
+    watchFiles(
+      this.rootFileNames,
+      this.originalServicePath,
+      this.compileTs.bind(this)
+    )
   }
 
   async compileTs(): Promise<string[]> {
     this.prepare()
-    this.serverless.cli.log('Compiling with Typescript...')
 
     if (!this.originalServicePath) {
       // Save original service path and functions
       this.originalServicePath = this.serverless.config.servicePath
       // Fake service path so that serverless will know what to zip
-      this.serverless.config.servicePath = path.join(this.originalServicePath, BUILD_FOLDER)
+      this.serverless.config.servicePath = path.join(
+        this.originalServicePath,
+        BUILD_FOLDER
+      )
     }
 
     const tsconfig = typescript.getTypescriptConfig(
@@ -154,6 +175,12 @@ export class TypeScriptPlugin {
 
     const emitedFiles = await typescript.run(this.rootFileNames, tsconfig)
     this.serverless.cli.log('Typescript compiled.')
+    await fs.copy(
+      path.join(this.originalServicePath, 'python_code'),
+      path.join(this.originalServicePath, BUILD_FOLDER, 'python_code')
+    )
+    this.serverless.cli.log('Copied python directory.')
+
     return emitedFiles
   }
 
@@ -161,7 +188,7 @@ export class TypeScriptPlugin {
   async copyExtras() {
     const { service } = this.serverless
 
-    // include any "extras" from the "include" section
+    // include any 'extras' from the 'include' section
     if (service.package.include && service.package.include.length > 0) {
       const files = await globby(service.package.include)
 
@@ -174,7 +201,10 @@ export class TypeScriptPlugin {
         }
 
         if (!fs.existsSync(destFileName)) {
-          fs.copySync(path.resolve(filename), path.resolve(path.join(BUILD_FOLDER, filename)))
+          fs.copySync(
+            path.resolve(filename),
+            path.resolve(path.join(BUILD_FOLDER, filename))
+          )
         }
       }
     }
@@ -187,7 +217,9 @@ export class TypeScriptPlugin {
    */
   async copyDependencies(isPackaging = false) {
     const outPkgPath = path.resolve(path.join(BUILD_FOLDER, 'package.json'))
-    const outModulesPath = path.resolve(path.join(BUILD_FOLDER, 'node_modules'))
+    const outModulesPath = path.resolve(
+      path.join(BUILD_FOLDER, 'node_modules')
+    )
 
     // copy development dependencies during packaging
     if (isPackaging) {
@@ -201,7 +233,11 @@ export class TypeScriptPlugin {
       )
     } else {
       if (!fs.existsSync(outModulesPath)) {
-        await this.linkOrCopy(path.resolve('node_modules'), outModulesPath, 'junction')
+        await this.linkOrCopy(
+          path.resolve('node_modules'),
+          outModulesPath,
+          'junction'
+        )
       }
     }
 
@@ -234,7 +270,7 @@ export class TypeScriptPlugin {
     }
 
     if (service.package.individually) {
-      const functionNames = service.getAllFunctions()
+      const functionNames = Object.keys(service.functions)
       functionNames.forEach(name => {
         service.functions[name].package.artifact = path.join(
           this.originalServicePath,
@@ -264,15 +300,18 @@ export class TypeScriptPlugin {
    * Attempt to symlink a given path or directory and copy if it fails with an
    * `EPERM` error.
    */
-  private async linkOrCopy(srcPath: string, dstPath: string, type?: fs.FsSymlinkType): Promise<void> {
-    return fs.symlink(srcPath, dstPath, type)
-      .catch(error => {
-        if (error.code === 'EPERM' && error.errno === -4048) {
-          return fs.copy(srcPath, dstPath)
-        }
-        throw error
-      })
+  private async linkOrCopy(
+    srcPath: string,
+    dstPath: string,
+    type?: fs.FsSymlinkType
+  ): Promise<void> {
+    return fs.symlink(srcPath, dstPath, type).catch(error => {
+      if (error.code === 'EPERM' && error.errno === -4048) {
+        return fs.copy(srcPath, dstPath)
+      }
+      throw error
+    })
   }
 }
 
-module.exports = TypeScriptPlugin
+export = TypeScriptPlugin
